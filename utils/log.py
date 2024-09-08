@@ -50,15 +50,17 @@ class Log:
 
             if accuracy > self.best_accuracy:
                 self.best_accuracy = accuracy
+                
+        
 
     def _train_step(self, model, loss, accuracy, learning_rate: float) -> None:
         self.learning_rate = learning_rate
         self.last_steps_state["loss"] += loss.sum().item()
         self.last_steps_state["accuracy"] += accuracy.sum().item()
-        self.last_steps_state["steps"] += self.batch_size
+        self.last_steps_state["steps"] += loss.size(0)
         self.epoch_state["loss"] += loss.sum().item()
         self.epoch_state["accuracy"] += accuracy.sum().item()
-        self.epoch_state["steps"] += self.batch_size
+        self.epoch_state["steps"] += loss.size(0)
         self.step += 1
 
         if self.step % self.log_each == self.log_each - 1:
@@ -77,7 +79,7 @@ class Log:
     def _eval_step(self, loss, accuracy) -> None:
         self.epoch_state["loss"] += loss.sum().item()
         self.epoch_state["accuracy"] += accuracy.sum().item()
-        self.epoch_state["steps"] += self.batch_size
+        self.epoch_state["steps"] += loss.size(0)
 
     def _reset(self, len_dataset: int) -> None:
         self.start_time = time.time()
@@ -94,3 +96,7 @@ class Log:
         print(f"┃              ┃              ╷              ┃              ╷              ┃              ╷              ┃")
         print(f"┃       epoch  ┃        loss  │    accuracy  ┃        l.r.  │     elapsed  ┃        loss  │    accuracy  ┃")
         print(f"┠──────────────╂──────────────┼──────────────╂──────────────┼──────────────╂──────────────┼──────────────┨")
+
+    def next_round(self):
+        self.epoch=-1
+        self._reset(0)

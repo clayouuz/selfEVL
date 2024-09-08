@@ -1,9 +1,12 @@
 import torch
+import os
 import numpy as np
+
+import torch.nn as nn
 from torchvision import transforms
 from torch.utils.data import DataLoader
-from torch.optim.lr_scheduler import StepLR
-import torch.nn as nn
+# from torch.optim.lr_scheduler import 
+from utils.step_lr import StepLR
 
 from model.wide_res_net import WideResNet
 from model.smooth_cross_entropy import smooth_crossentropy
@@ -19,7 +22,8 @@ class selfEVL:
         self.args = args
         self.feature_extractor = None
         # self.model = mynet(self.feature_extractor, 100)
-        self.model=network(100,resnet18_cbam())
+        # self.model=network(100,resnet18_cbam())
+        self.classifier = None
         self.feature_extractors = []
         self.numclass = args.fg_nc
         self.task_size = task_size
@@ -89,7 +93,7 @@ class selfEVL:
         return test_loader
 
     def beforeTrain(self, current_task):
-        self.model.eval()  #设置为评估模式
+        # self.model.eval()  #设置为评估模式
         # self.feature_extractor = WideResNet(self.args.depth, self.args.width_factor, self.args.dropout, in_channels=3, labels=100).to(self.device)
         # self.feature_extractor = mynet(self.feature_extractor, self.numclass)
         self.feature_extractor = network(self.numclass,resnet18_cbam())
@@ -98,21 +102,25 @@ class selfEVL:
         if current_task == 0:
             classes = [0, self.numclass]
         else:
-            classes = [self.numclass - self.args.task_size, self.numclass]
+            classes = [self.numclass - self.task_size, self.numclass]
         self.train_loader, self.test_loader = self._get_train_and_test_dataloader(classes)
         if current_task > 0:
-            self.model.Incremental_learning(4 * self.numclass)
-        self.model.train()  #设置为训练模式
-        self.model.to(self.device)
+            print(self.numclass)
+            print(classes)
+            # self.model.Incremental_learning(self.numclass)
+        # self.model.train()  #设置为训练模式
+        # self.model.to(self.device)
     
     def _train_feature(self):
         args=self.args
         log = self.log
         model = self.feature_extractor
+        model.to(self.device)
 
         base_optimizer = torch.optim.SGD
         optimizer = SAM(model.parameters(), base_optimizer, rho=args.rho, adaptive=args.adaptive, lr=args.lr, momentum=args.momentum, weight_decay=args.weight_decay)
-        scheduler = StepLR(optimizer, step_size=45, gamma=0.1)
+        # scheduler = scheduler = StepLR(optimizer, step_size=2, gamma=0.1)
+        scheduler = StepLR(optimizer, args.lr, args.epochs)
 
         for epoch in range(args.epochs):
             model.train()
@@ -139,10 +147,11 @@ class selfEVL:
 
                 with torch.no_grad():
                     correct = torch.argmax(predictions.data, 1) == targets
-                    log(model, loss.cpu(), correct.cpu(), scheduler.get_last_lr()[0])
-                    print(scheduler.get_last_lr())
-                    if scheduler.optimizer._step_count > 0:
-                        scheduler.step()
+                    log(model, loss.cpu(), correct.cpu(), scheduler.lr())
+                    # print(scheduler.get_last_lr())
+                    if epoch > 0:
+                        # scheduler.step()
+                        scheduler(epoch)
 
             model.eval()
             log.eval(len_dataset=len(self.test_loader))
@@ -155,6 +164,7 @@ class selfEVL:
                     correct = torch.argmax(predictions, 1) == targets
                     log(model, loss.cpu(), correct.cpu())
         log.flush()
+        log.next_round()
 
         
         
@@ -196,17 +206,24 @@ class selfEVL:
         # self._train_classifier()
 
     def afterTrain(self):
-        #save feature extractor
         
+        
+        #save feature extractor
+        path = self.args.save_path + self.file_name + '/'
+        if not os.path.isdir(path):
+            os.makedirs(path)
+        path=path+'{}:{}.pth'.format(self.task_size,self.numclass)
+        torch.save(self.feature_extractor.state_dict(), path)
         #save classifier
         
         #save prototype
         
+        self.numclass+=self.task_size
         pass
     
     def _test(self):
         
-        self.model.eval()
+        # self.model.eval()
         correct = 0
         total = 0
         for images, labels in self.test_loader:

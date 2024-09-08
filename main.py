@@ -6,8 +6,8 @@ import time
 parser = argparse.ArgumentParser(description='self EValuation Learning')
 
 parser.add_argument('--batch_size', type=int, default=64, help='input batch size for training (default: 64)')
-parser.add_argument('--epochs', type=int, default=51, help='number of epochs to train (default: 100)')
-parser.add_argument('--lr', type=float, default=1, help='learning rate (default: 0.001)')
+parser.add_argument('--epochs', type=int, default=1, help='number of epochs to train (default: 100)')
+parser.add_argument('--lr', type=float, default=0.01, help='learning rate (default: 0.001)')
 #sam
 parser.add_argument("--depth", default=16, type=int, help="Number of layers.")
 parser.add_argument("--dropout", default=0.0, type=float, help="Dropout rate.")
@@ -21,18 +21,18 @@ parser.add_argument("--label_smoothing", default=0.1, type=float, help="Use 0.0 
 
 parser.add_argument('--total_nc', default=100, type=int, help='class number for the dataset')
 parser.add_argument('--fg_nc', default=10, type=int, help='the number of classes in first task')
-parser.add_argument('--task_num', default=10, type=int, help='the number of incremental steps')
+parser.add_argument('--task_num', default=9, type=int, help='the number of incremental steps')
 parser.add_argument('--gpu', default='0', type=str, help='GPU id to use')
 parser.add_argument('--data_name', default='CIFAR100', type=str, help='the name of dataset')
-
+parser.add_argument('--save_path', default='model_saved_check/', type=str, help='save files directory')
 
 args = parser.parse_args()
 
 def main():
     cuda_index = 'cuda:' + args.gpu
     device = torch.device(cuda_index if torch.cuda.is_available() else "cpu")
-    
-        #每步增量学习的类别数。task_size = (总类别数 - 第一步类别数) / 总步数
+    print(device)    
+    #每步增量学习的类别数。task_size = (总类别数 - 第一步类别数) / 总步数
     task_size = int((args.total_nc - args.fg_nc) / args.task_num)  
     file_name = args.data_name + '_' + str(args.fg_nc) + '_' + str(args.task_num) + '+' + str(task_size) 
 
