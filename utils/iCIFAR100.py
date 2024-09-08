@@ -91,15 +91,15 @@ class iCIFAR100(CIFAR100):
         return index, img, target
 
     def __getitem__(self, index):
-        if self.TrainData != []:
+        if len(self.TrainData) != 0:
             return self.getTrainItem(index)
-        elif self.TestData != []:
+        elif len(self.TestData) != 0:
             return self.getTestItem(index)
 
     def __len__(self):
-        if self.TrainData != []:
+        if len(self.TrainData) != 0:
             return len(self.TrainData)
-        elif self.TestData != []:
+        elif len(self.TestData) != 0:
             return len(self.TestData)
 
     def get_image_class(self, label):

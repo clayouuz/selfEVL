@@ -1,13 +1,13 @@
-from utility.loading_bar import LoadingBar
+from utils.loading_bar import LoadingBar
 import time
 
-
 class Log:
-    def __init__(self, log_each: int, initial_epoch=-1):
+    def __init__(self, log_each: int, initial_epoch=-1, batch_size=64):
         self.loading_bar = LoadingBar(length=27)
         self.best_accuracy = 0.0
         self.log_each = log_each
         self.epoch = initial_epoch
+        self.batch_size = batch_size
 
     def train(self, len_dataset: int) -> None:
         self.epoch += 1
@@ -55,10 +55,10 @@ class Log:
         self.learning_rate = learning_rate
         self.last_steps_state["loss"] += loss.sum().item()
         self.last_steps_state["accuracy"] += accuracy.sum().item()
-        self.last_steps_state["steps"] += loss.size(0)
+        self.last_steps_state["steps"] += self.batch_size
         self.epoch_state["loss"] += loss.sum().item()
         self.epoch_state["accuracy"] += accuracy.sum().item()
-        self.epoch_state["steps"] += loss.size(0)
+        self.epoch_state["steps"] += self.batch_size
         self.step += 1
 
         if self.step % self.log_each == self.log_each - 1:
@@ -77,7 +77,7 @@ class Log:
     def _eval_step(self, loss, accuracy) -> None:
         self.epoch_state["loss"] += loss.sum().item()
         self.epoch_state["accuracy"] += accuracy.sum().item()
-        self.epoch_state["steps"] += loss.size(0)
+        self.epoch_state["steps"] += self.batch_size
 
     def _reset(self, len_dataset: int) -> None:
         self.start_time = time.time()

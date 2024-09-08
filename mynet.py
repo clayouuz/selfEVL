@@ -1,22 +1,26 @@
 import torch.nn as nn
 
-class mynet(nn.Module):
-    def __init__(self,feature_extractor,class_num):
-        super(mynet, self).__init__()
-        self.feature_extractor = feature_extractor
-        self.fc1 = nn.Linear(512, class_num)
-        
-    def forward(self, x):
-        x = self.feature_extractor(x)
-        x = self.fc1(x)
+class network(nn.Module):
+    def __init__(self, numclass, feature_extractor):
+        super(network, self).__init__()
+        self.feature = feature_extractor
+        self.fc = nn.Linear(512, numclass, bias=True)
+
+    def forward(self, input):
+        x = self.feature(input)
+        x = self.fc(x)
         return x
+
+    def Incremental_learning(self, numclass):
+        weight = self.fc.weight.data
+        bias = self.fc.bias.data
+        in_feature = self.fc.in_features
+        out_feature = self.fc.out_features
+
+        self.fc = nn.Linear(in_feature, numclass, bias=True)
+        self.fc.weight.data[:out_feature] = weight[:out_feature]
+        self.fc.bias.data[:out_feature] = bias[:out_feature]
+
+    def feature_extractor(self,inputs):
+        return self.feature(inputs)
     
-    def incremental_learning(self, class_num):
-        in_features = self.fc1.in_features
-        out_features = self.fc1.out_features
-        weight = self.fc1.weight.data
-        bias = self.fc1.bias.data
-        self.fc1 = nn.Linear(in_features, class_num)
-        self.fc1.weight.data[:out_features] = weight
-        self.fc1.bias.data[:out_features] = bias
-        return self.fc1

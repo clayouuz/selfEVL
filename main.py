@@ -4,13 +4,26 @@ import torch
 import time
 
 parser = argparse.ArgumentParser(description='self EValuation Learning')
-parser.add_argument('--batch_size', type=int, default=128, help='input batch size for training (default: 128)')
-parser.add_argument('--epochs', type=int, default=100, help='number of epochs to train (default: 100)')
-parser.add_argument('--learning_rate', type=float, default=0.1, help='learning rate (default: 0.1)')
+
+parser.add_argument('--batch_size', type=int, default=64, help='input batch size for training (default: 64)')
+parser.add_argument('--epochs', type=int, default=51, help='number of epochs to train (default: 100)')
+parser.add_argument('--lr', type=float, default=1, help='learning rate (default: 0.001)')
+#sam
+parser.add_argument("--depth", default=16, type=int, help="Number of layers.")
+parser.add_argument("--dropout", default=0.0, type=float, help="Dropout rate.")
+parser.add_argument("--width_factor", default=8, type=int, help="How many times wider compared to normal ResNet.")
+parser.add_argument("--adaptive", default=True, type=bool, help="True if you want to use the Adaptive SAM.")
+parser.add_argument("--rho", default=2.0, type=int, help="Rho parameter for SAM.")
+parser.add_argument("--weight_decay", default=0.0005, type=float, help="L2 weight decay.")
+parser.add_argument("--momentum", default=0.9, type=float, help="SGD Momentum.")
+parser.add_argument("--label_smoothing", default=0.1, type=float, help="Use 0.0 for no label smoothing.")
+    
+
 parser.add_argument('--total_nc', default=100, type=int, help='class number for the dataset')
-parser.add_argument('--fg_nc', default=50, type=int, help='the number of classes in first task')
+parser.add_argument('--fg_nc', default=10, type=int, help='the number of classes in first task')
 parser.add_argument('--task_num', default=10, type=int, help='the number of incremental steps')
 parser.add_argument('--gpu', default='0', type=str, help='GPU id to use')
+parser.add_argument('--data_name', default='CIFAR100', type=str, help='the name of dataset')
 
 
 args = parser.parse_args()
