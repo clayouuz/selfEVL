@@ -38,8 +38,8 @@ class iCIFAR100(CIFAR100):
             datas.append(data)
             labels.append(np.full((data.shape[0]), label))
         datas, labels = self.concatenate(datas, labels)
-        self.TestData = datas if self.TestData == [] else np.concatenate((self.TestData, datas), axis=0)
-        self.TestLabels = labels if self.TestLabels == [] else np.concatenate((self.TestLabels, labels), axis=0)
+        self.TestData = datas if len(self.TestData) == 0 else np.concatenate((self.TestData, datas), axis=0)
+        self.TestLabels = labels if len(self.TestLabels) == 0 else np.concatenate((self.TestLabels, labels), axis=0)
         # if self.testmode:
         #     self.TestData = self.TestData[:100]
         #     self.TestLabels = self.TestLabels[:100]

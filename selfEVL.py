@@ -3,6 +3,7 @@ import os
 import numpy as np
 
 import torch.nn as nn
+import torch.nn.functional as F
 from torchvision import transforms
 from torch.utils.data import DataLoader
 # from torch.optim.lr_scheduler import 
@@ -10,7 +11,7 @@ from utils.step_lr import StepLR
 
 from model.wide_res_net import WideResNet
 from model.smooth_cross_entropy import smooth_crossentropy
-from mynet import network
+from mynet import network, toplayer
 from utils.ResNet import resnet18_cbam
 from utils.iCIFAR100 import iCIFAR100
 from utils.log import Log
@@ -21,12 +22,11 @@ class selfEVL:
     def __init__(self,args,task_size,device,file_name):
         self.args = args
         self.feature_extractor = None
-        # self.model = mynet(self.feature_extractor, 100)
-        # self.model=network(100,resnet18_cbam())
         self.classifier = None
         self.feature_extractors = []
         self.numclass = args.fg_nc
         self.task_size = task_size
+        self.task_id = 0
         self.device = device
         self.file_name = file_name
         self.log = Log(log_each=10,batch_size=args.batch_size)
@@ -52,7 +52,7 @@ class selfEVL:
         return: list of class labels in new order
         '''
         return np.array(list(map(lambda x: order.index(x), y)))
-    def setup_data(self, shuffle, seed):
+    def setup_data(self, shuffle):
         '''
         设置类的序号，shuffle为True时，打乱类的顺序
         将
@@ -61,7 +61,6 @@ class selfEVL:
         test_targets = self.test_dataset.targets
         order = [i for i in range(len(np.unique(train_targets)))]
         if shuffle:
-            np.random.seed(seed)
             order = np.random.permutation(len(order)).tolist()
         else:
             order = range(len(order))
@@ -84,7 +83,6 @@ class selfEVL:
                                  batch_size=self.args.batch_size)
 
         return train_loader, test_loader
-
     def _get_test_dataloader(self, classes):
         self.test_dataset.getTestData_up2now(classes)
         test_loader = DataLoader(dataset=self.test_dataset,
@@ -93,30 +91,27 @@ class selfEVL:
         return test_loader
 
     def beforeTrain(self, current_task):
-        # self.model.eval()  #设置为评估模式
-        # self.feature_extractor = WideResNet(self.args.depth, self.args.width_factor, self.args.dropout, in_channels=3, labels=100).to(self.device)
-        # self.feature_extractor = mynet(self.feature_extractor, self.numclass)
-        self.feature_extractor = network(self.numclass,resnet18_cbam())
-        
         
         if current_task == 0:
             classes = [0, self.numclass]
+            self.feature_extractor = network(resnet18_cbam(),self.numclass)
+            self.classifier = toplayer(self.numclass,self.numclass)
+            # self.classifier = toplayer(512,self.numclass)
         else:
             classes = [self.numclass - self.task_size, self.numclass]
+            self.feature_extractor = network(resnet18_cbam(),self.task_size)
+            self.classifier.Incremental_learning(self.numclass,self.numclass)
+            # self.classifier.Incremental_learning(512,self.numclass)
+        
+        self.task_id = current_task
         self.train_loader, self.test_loader = self._get_train_and_test_dataloader(classes)
-        if current_task > 0:
-            print(self.numclass)
-            print(classes)
-            # self.model.Incremental_learning(self.numclass)
-        # self.model.train()  #设置为训练模式
-        # self.model.to(self.device)
-    
+
     def _train_feature(self):
         args=self.args
         log = self.log
-        model = self.feature_extractor
-        model.to(self.device)
-
+        model = self.feature_extractor.to(self.device)
+        model.train()
+        
         base_optimizer = torch.optim.SGD
         optimizer = SAM(model.parameters(), base_optimizer, rho=args.rho, adaptive=args.adaptive, lr=args.lr, momentum=args.momentum, weight_decay=args.weight_decay)
         # scheduler = scheduler = StepLR(optimizer, step_size=2, gamma=0.1)
@@ -140,9 +135,6 @@ class selfEVL:
                 # second forward-backward step
                 disable_running_stats(model)
                 smooth_crossentropy(model(inputs), targets, smoothing=args.label_smoothing).mean().backward()
-                # output= model(inputs)
-                # predictions = nn.Softmax(dim=1)(output)
-                # nn.CrossEntropyLoss()(predictions / self.args.label_smoothing,targets.long()).mean().backward()
                 optimizer.second_step(zero_grad=True)
 
                 with torch.no_grad():
@@ -157,7 +149,7 @@ class selfEVL:
             log.eval(len_dataset=len(self.test_loader))
 
             with torch.no_grad():
-                for i, (_, inputs, targets) in enumerate(self.train_loader):
+                for i, (_, inputs, targets) in enumerate(self.test_loader):
                     inputs, targets = inputs.to(self.device), targets.to(self.device)
                     predictions = model(inputs)
                     loss = smooth_crossentropy(predictions, targets)
@@ -165,72 +157,108 @@ class selfEVL:
                     log(model, loss.cpu(), correct.cpu())
         log.flush()
         log.next_round()
-
-        
-        
     
-    def _train_classifier(self):
-        model=self.model
-        optimizer = torch.optim.Adam(self.model.parameters(),lr=self.args.lr,weight_decay=2e-4)
-        scheduler = StepLR(optimizer, step_size=45, gamma=0.1)
-        for epoch in range(self.args.epochs):
-            for i, (images, labels) in enumerate(self.train_loader):
-                
-                images = torch.stack(
-                    [torch.rot90(images, k, (2, 3)) for k in range(4)], 1)
-                images = images.view(-1, 3, 32, 32)
-                labels = torch.stack([labels * 4 + k for k in range(4)], # type: ignore
-                                     1).view(-1)
-                
-                images, labels = images.to(self.device), labels.to(self.device)
-                optimizer.zero_grad()
-                outputs = self.model(images)
-                loss = self._loss(outputs, labels)
-                loss.backward()
-                optimizer.step()
-                if i % 100 == 0:
-                    print('Epoch [%d/%d], Iter [%d/%d] Loss: %.4f' %
-                          (epoch + 1, self.args.epochs, i + 1, len(self.train_loader), loss.item()))
-                with torch.no_grad():
-                    correct = torch.argmax(outputs.data, 1) == labels
-                    self.log(model, loss.cpu(), correct.cpu(), scheduler.lr())
-            scheduler.step()
-            
-    def _loss(self, outputs, labels):
-        # return F.cross_entropy(outputs, labels)
-        return nn.CrossEntropyLoss()(outputs, labels.long())
-    
-    def train(self):
-
-        self._train_feature()
-        # self._train_classifier()
-
-    def afterTrain(self):
-        
-        
-        #save feature extractor
+    def _save_feature_extractor(self):
         path = self.args.save_path + self.file_name + '/'
         if not os.path.isdir(path):
             os.makedirs(path)
-        path=path+'{}:{}.pth'.format(self.task_size,self.numclass)
+        path=path+'feature_{}_{}.pth'.format(self.task_size,self.numclass)
         torch.save(self.feature_extractor.state_dict(), path)
-        #save classifier
         
-        #save prototype
+        #TODO:load feature extractor
+        
+    def _train_classifier(self):
+        model=self.classifier.to(self.device)
+        model.train()
+        args=self.args
+        log=self.log
+        test_up2now = self._get_test_dataloader([0, self.numclass])  
+        optimizer = torch.optim.Adam(model.parameters(),lr=self.args.lr,weight_decay=2e-4)
+        scheduler = StepLR(optimizer, args.lr, args.epochs)
+        
+        for epoch in range(self.args.epochs):
+            model.train()
+            log.train(len_dataset=len(self.train_loader))
+            for i, (_, images, targets) in enumerate(self.train_loader):
+                
+                #optional: 4*rotation
+                
+                # images = torch.stack(
+                #     [torch.rot90(images, k, (2, 3)) for k in range(4)], 1)
+                # images = images.view(-1, 3, 32, 32)
+                # targets = torch.stack([targets * 4 + k for k in range(4)],1).view(-1)
+                
+                images, targets = images.to(self.device), targets.to(self.device)
+                optimizer.zero_grad()
+                inputs = self._get_features(images).to(self.device)
+                outputs = model(inputs)
+                loss = self._loss(outputs, targets)
+                loss.mean().backward()
+                optimizer.step()
+
+                with torch.no_grad():
+                    correct = torch.argmax(outputs.data, 1) == targets
+                    log(model, loss.cpu(), correct.cpu(), scheduler.lr())
+                    # print(scheduler.get_last_lr())
+                    if epoch > 0:
+                        # scheduler.step()
+                        scheduler(epoch)
+
+            model.eval()
+            log.eval(len_dataset=len(test_up2now))
+
+            # with torch.no_grad():
+            #     for i, (_, inputs, targets) in enumerate(test_up2now):
+            #         inputs, targets = inputs.to(self.device), targets.to(self.device)
+            #         predictions = model(inputs)
+            #         loss = smooth_crossentropy(predictions, targets)
+            #         correct = torch.argmax(predictions, 1) == targets
+            #         log(model, loss.cpu(), correct.cpu())
+        log.flush()
+        log.next_round()
+                    
+    def _save_classifier(self):
+        #save feature extractor
+        self._save_feature_extractor()
+        
+        #TODO save classifier
+        #TODO save prototype
+        pass  
+            
+    def _loss(self, outputs, targets,smoothing=0.1):
+        # print(outputs.size())
+        n_class = outputs.size(1)
+        one_hot = torch.full_like(outputs,fill_value=smoothing / (n_class - 1))
+        # print(one_hot.size())
+        # print(targets.size())
+        one_hot.scatter_(dim=1, index=targets.unsqueeze(1).long(), value=1.0 - smoothing)
+        targets_smooth = one_hot
+        loss_cls = F.kl_div(F.log_softmax(outputs, dim=1), targets_smooth, reduction='none').sum(-1)
+        if self._is_first_task():
+            return loss_cls
+        
+
+        # one_hot.scatter_(dim=1, index=gold.unsqueeze(1).long(), value=1.0 - smoothing)
+        # log_prob = F.log_softmax(pred, dim=1)
+
+        # return F.kl_div(input=log_prob, target=one_hot, reduction='none').sum(-1)
+
+
+    
+    def train(self):
+        # self._train_feature()
+        # self._save_feature_extractor()
+        
+        self._train_classifier()
+        self._save_classifier()
         
         self.numclass+=self.task_size
-        pass
-    
-    def _test(self):
         
-        # self.model.eval()
-        correct = 0
-        total = 0
-        for images, labels in self.test_loader:
-            images, labels = images.to(self.device), labels.to(self.device)
-            outputs = self.model(images)
-            outputs = outputs[:, ::4]
-            _, predicted = torch.max(outputs.data, 1)
-            total += labels.size(0)
-            correct += (predicted == labels).sum().item()
-        print('Accuracy of the network on the 10000 test images: %d %%' % (100 * correct / total))
+
+        
+    def _get_features(self, inputs):#TODO
+        return self.feature_extractor(inputs)
+    
+    def _is_first_task(self):
+        return self.numclass==self.args.fg_nc
+    

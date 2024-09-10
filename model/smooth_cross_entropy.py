@@ -4,10 +4,12 @@ import torch.nn.functional as F
 
 
 def smooth_crossentropy(pred, gold, smoothing=0.1):
+    # print(pred.size())
     n_class = pred.size(1)
-    # n_class=100
 
     one_hot = torch.full_like(pred, fill_value=smoothing / (n_class - 1))
+    # print(one_hot.size())
+    # print(gold.size())
     one_hot.scatter_(dim=1, index=gold.unsqueeze(1).long(), value=1.0 - smoothing)
     log_prob = F.log_softmax(pred, dim=1)
 
