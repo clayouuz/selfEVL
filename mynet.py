@@ -28,7 +28,10 @@ class toplayer(nn.Module):
         bias = self.fc.bias.data
         in_feature = self.fc.in_features
         out_feature = self.fc.out_features
-
+        # print(in_feature)
+        # print(out_feature)
         self.fc = nn.Linear(in_feature+demention, numclass, bias=True)
-        self.fc.weight.data[:out_feature] = weight[:out_feature]
+        self.fc.weight.data[:out_feature,:out_feature] = weight[:out_feature]
         self.fc.bias.data[:out_feature] = bias[:out_feature]
+        # print(self.fc.in_features)
+        # print(self.fc.out_features)

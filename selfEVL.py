@@ -100,7 +100,7 @@ class selfEVL:
         else:
             classes = [self.numclass - self.task_size, self.numclass]
             self.feature_extractor = network(resnet18_cbam(),self.task_size)
-            self.classifier.Incremental_learning(self.numclass,self.numclass)
+            self.classifier.Incremental_learning(self.task_size,self.numclass)
             # self.classifier.Incremental_learning(512,self.numclass)
         
         self.task_id = current_task
@@ -191,6 +191,7 @@ class selfEVL:
                 images, targets = images.to(self.device), targets.to(self.device)
                 optimizer.zero_grad()
                 inputs = self._get_features(images).to(self.device)
+
                 outputs = model(inputs)
                 loss = self._loss(outputs, targets)
                 loss.mean().backward()
@@ -207,14 +208,15 @@ class selfEVL:
             model.eval()
             log.eval(len_dataset=len(test_up2now))
 
-            # with torch.no_grad():
-            #     for i, (_, inputs, targets) in enumerate(test_up2now):
-            #         inputs, targets = inputs.to(self.device), targets.to(self.device)
-            #         predictions = model(inputs)
-            #         loss = smooth_crossentropy(predictions, targets)
-            #         correct = torch.argmax(predictions, 1) == targets
-            #         log(model, loss.cpu(), correct.cpu())
-        # log.flush()
+            with torch.no_grad():
+                for i, (_, inputs, targets) in enumerate(test_up2now):
+                    inputs, targets = inputs.to(self.device), targets.to(self.device)
+                    features=self._get_features(inputs)
+                    predictions = model(features)
+                    loss = smooth_crossentropy(predictions, targets)
+                    correct = torch.argmax(predictions, 1) == targets
+                    log(model, loss.cpu(), correct.cpu())
+        log.flush()
         log.next_round()
                     
     def _save_classifier(self):
@@ -226,22 +228,19 @@ class selfEVL:
         pass  
             
     def _loss(self, outputs, targets,smoothing=0.1):
-        # print(outputs.size())
+
         n_class = outputs.size(1)
         one_hot = torch.full_like(outputs,fill_value=smoothing / (n_class - 1))
-        # print(one_hot.size())
-        # print(targets.size())
         one_hot.scatter_(dim=1, index=targets.unsqueeze(1).long(), value=1.0 - smoothing)
         targets_smooth = one_hot
+        # targets_smooth=targets
         loss_cls = F.kl_div(F.log_softmax(outputs, dim=1), targets_smooth, reduction='none').sum(-1)
+
         if self._is_first_task():
             return loss_cls
-        
 
-        # one_hot.scatter_(dim=1, index=gold.unsqueeze(1).long(), value=1.0 - smoothing)
-        # log_prob = F.log_softmax(pred, dim=1)
+        return loss_cls
 
-        # return F.kl_div(input=log_prob, target=one_hot, reduction='none').sum(-1)
 
 
     
@@ -257,8 +256,14 @@ class selfEVL:
 
         
     def _get_features(self, inputs):#TODO
-        return self.feature_extractor(inputs)
+        feature = self.feature_extractor.to(self.device)(inputs)
+        temp=feature.clone()
+
+        for i in range(self.task_id):
+            temp=torch.cat((temp,feature),dim=1)
+        return temp
     
     def _is_first_task(self):
         return self.numclass==self.args.fg_nc
+    
     
