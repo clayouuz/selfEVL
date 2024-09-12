@@ -9,8 +9,8 @@ from torch.utils.data import DataLoader
 # from torch.optim.lr_scheduler import 
 from utils.step_lr import StepLR
 
-from model.wide_res_net import WideResNet
-from model.smooth_cross_entropy import smooth_crossentropy
+from utils.wide_res_net import WideResNet
+from utils.smooth_cross_entropy import smooth_crossentropy
 from mynet import network, toplayer
 from utils.ResNet import resnet18_cbam
 from utils.iCIFAR100 import iCIFAR100
@@ -164,8 +164,8 @@ class selfEVL:
             os.makedirs(path)
         path=path+'feature_{}_{}.pth'.format(self.task_size,self.numclass)
         torch.save(self.feature_extractor.state_dict(), path)
-        
         #TODO:load feature extractor
+        
         
     def _train_classifier(self):
         model=self.classifier.to(self.device)
@@ -214,7 +214,7 @@ class selfEVL:
             #         loss = smooth_crossentropy(predictions, targets)
             #         correct = torch.argmax(predictions, 1) == targets
             #         log(model, loss.cpu(), correct.cpu())
-        log.flush()
+        # log.flush()
         log.next_round()
                     
     def _save_classifier(self):
