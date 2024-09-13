@@ -218,12 +218,11 @@ class selfEVL:
         log.next_round()
                     
     def _save_classifier(self):#TODO
-        #save feature extractor
         
         #TODO save classifier
         #TODO save prototype
         pass  
-            
+
     def _loss(self, outputs, targets,smoothing=0.1):#TODO
 
         n_class = outputs.size(1)
@@ -247,17 +246,31 @@ class selfEVL:
         
         # self._train_classifier()
         # self._save_classifier()
+        
+        input=torch.rand(128,3,3,3).to(self.device)
+        out=self.feature_extractor(input)
+        print(out[0])
 
+
+                
         self.numclass+=self.task_size
         
         
     def _get_features(self, inputs):#TODO
-        feature = self.feature_extractor.to(self.device)(inputs)
-        temp=feature.clone()
-
+        output_list=[]
+        for feature in self.feature_extractors:
+            model=torch.load(feature).to(self.device)
+            model.eval()
+            output=self.feature_extractor(inputs)
+            output_list.append(output)
         for i in range(self.task_id):
-            temp=torch.cat((temp,feature),dim=1)
-        return temp
+            if i==0:
+                output_list[i]=output_list[i][:,0:self.args.fg_nc]
+            else:
+                output_list[i]=output_list[i][:,self.numclass-self.task_size:self.numclass]
+                feature=torch.cat((output_list[i-1],output_list[i]),dim=1)
+
+        return feature
     
     def _is_first_task(self):
         return self.numclass==self.args.fg_nc
@@ -268,7 +281,7 @@ class selfEVL:
             os.makedirs(path)
         path=path+'feature_{}_{}.pth'.format(self.task_size,self.numclass)
         if os.path.exists(path):
-            self.feature_extractor.load_state_dict(torch.load(path))
+            self.feature_extractor.load_state_dict(torch.load(path,map_location=torch.device('cpu')))
             print('load existed feature exatractor:',path)
             
         else:
