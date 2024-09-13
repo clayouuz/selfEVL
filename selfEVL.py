@@ -43,7 +43,6 @@ class selfEVL:
         self.train_loader = None
         self.test_loader = None
         
-
     def map_new_class_index(self, y, order):
         '''
         元素按照order的顺序进行重新排列
@@ -99,7 +98,7 @@ class selfEVL:
             # self.classifier = toplayer(512,self.numclass)
         else:
             classes = [self.numclass - self.task_size, self.numclass]
-            self.feature_extractor = network(resnet18_cbam(),self.task_size)
+            self.feature_extractor = network(resnet18_cbam(),self.numclass)
             self.classifier.Incremental_learning(self.task_size,self.numclass)
             # self.classifier.Incremental_learning(512,self.numclass)
         
@@ -163,8 +162,9 @@ class selfEVL:
         if not os.path.isdir(path):
             os.makedirs(path)
         path=path+'feature_{}_{}.pth'.format(self.task_size,self.numclass)
-        torch.save(self.feature_extractor.state_dict(), path)
-        #TODO:load feature extractor
+        # torch.save(self.feature_extractor.state_dict(), path)
+        torch.save(self.feature_extractor, path)
+
         
         
     def _train_classifier(self):
@@ -200,9 +200,7 @@ class selfEVL:
                 with torch.no_grad():
                     correct = torch.argmax(outputs.data, 1) == targets
                     log(model, loss.cpu(), correct.cpu(), scheduler.lr())
-                    # print(scheduler.get_last_lr())
                     if epoch > 0:
-                        # scheduler.step()
                         scheduler(epoch)
 
             model.eval()
@@ -219,15 +217,14 @@ class selfEVL:
         log.flush()
         log.next_round()
                     
-    def _save_classifier(self):
+    def _save_classifier(self):#TODO
         #save feature extractor
-        self._save_feature_extractor()
         
         #TODO save classifier
         #TODO save prototype
         pass  
             
-    def _loss(self, outputs, targets,smoothing=0.1):
+    def _loss(self, outputs, targets,smoothing=0.1):#TODO
 
         n_class = outputs.size(1)
         one_hot = torch.full_like(outputs,fill_value=smoothing / (n_class - 1))
@@ -241,19 +238,18 @@ class selfEVL:
 
         return loss_cls
 
-
-
-    
     def train(self):
-        # self._train_feature()
-        # self._save_feature_extractor()
+        if not self._get_feature_net():
+            self._train_feature()
+            self._save_feature_extractor()
+            
+        self.feature_extractors.append(self.feature_extractor.state_dict())
         
-        self._train_classifier()
-        self._save_classifier()
-        
+        # self._train_classifier()
+        # self._save_classifier()
+
         self.numclass+=self.task_size
         
-
         
     def _get_features(self, inputs):#TODO
         feature = self.feature_extractor.to(self.device)(inputs)
@@ -266,4 +262,15 @@ class selfEVL:
     def _is_first_task(self):
         return self.numclass==self.args.fg_nc
     
-    
+    def _get_feature_net(self):
+        path = self.args.save_path + self.file_name + '/'
+        if not os.path.isdir(path):
+            os.makedirs(path)
+        path=path+'feature_{}_{}.pth'.format(self.task_size,self.numclass)
+        if os.path.exists(path):
+            self.feature_extractor.load_state_dict(torch.load(path))
+            print('load existed feature exatractor:',path)
+            
+        else:
+            print('train feature extractor')
+        return os.path.exists(path)
