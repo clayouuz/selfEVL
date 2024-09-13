@@ -24,7 +24,7 @@ class selfEVL:
         self.feature_extractor = None
         self.classifier = None
         self.feature_extractors = []
-        self.numclass = args.fg_nc
+        self.numclass = args.init_nc
         self.task_size = task_size
         self.task_id = 0
         self.device = device
@@ -163,7 +163,7 @@ class selfEVL:
             os.makedirs(path)
         path=path+'feature_{}_{}.pth'.format(self.task_size,self.numclass)
         # torch.save(self.feature_extractor.state_dict(), path)
-        torch.save(self.feature_extractor, path)
+        torch.save(self.feature_extractor.state_dict(), path)
 
         
         
@@ -190,7 +190,7 @@ class selfEVL:
                 
                 images, targets = images.to(self.device), targets.to(self.device)
                 optimizer.zero_grad()
-                inputs = self._get_features(images).to(self.device)
+                inputs = self._get_features(images)
 
                 outputs = model(inputs)
                 loss = self._loss(outputs, targets)
@@ -244,36 +244,35 @@ class selfEVL:
             
         self.feature_extractors.append(self.feature_extractor.state_dict())
         
-        # self._train_classifier()
-        # self._save_classifier()
-        
-        input=torch.rand(128,3,3,3).to(self.device)
-        out=self.feature_extractor(input)
-        print(out[0])
-
-
-                
+        print('train classifier')
+        self._train_classifier()
+        self._save_classifier()
+ 
         self.numclass+=self.task_size
         
         
     def _get_features(self, inputs):#TODO
         output_list=[]
-        for feature in self.feature_extractors:
-            model=torch.load(feature).to(self.device)
+        print(len(self.feature_extractors))
+        for index,feature in enumerate(self.feature_extractors):
+            model=network(resnet18_cbam(),self.args.init_nc+index*self.task_size)
+            model.load_state_dict(feature)
+            model.to(self.device)
             model.eval()
-            output=self.feature_extractor(inputs)
+            output=model(inputs)
             output_list.append(output)
-        for i in range(self.task_id):
-            if i==0:
-                output_list[i]=output_list[i][:,0:self.args.fg_nc]
+        for index,output in enumerate(output_list):
+            if index==0:
+                output=output[:,0:self.args.init_nc]
+                temp=torch.clone(output)
             else:
-                output_list[i]=output_list[i][:,self.numclass-self.task_size:self.numclass]
-                feature=torch.cat((output_list[i-1],output_list[i]),dim=1)
-
-        return feature
+                output=output[:,self.args.init_nc+(index-1)*self.task_size:self.args.init_nc+index*self.task_size]
+                temp=torch.cat((temp,output),dim=1)
+        print(temp.shape)
+        return temp
     
     def _is_first_task(self):
-        return self.numclass==self.args.fg_nc
+        return self.numclass==self.args.init_nc
     
     def _get_feature_net(self):
         path = self.args.save_path + self.file_name + '/'
@@ -281,7 +280,7 @@ class selfEVL:
             os.makedirs(path)
         path=path+'feature_{}_{}.pth'.format(self.task_size,self.numclass)
         if os.path.exists(path):
-            self.feature_extractor.load_state_dict(torch.load(path,map_location=torch.device('cpu')))
+            self.feature_extractor.load_state_dict(torch.load(path))
             print('load existed feature exatractor:',path)
             
         else:
