@@ -23,6 +23,7 @@ class selfEVL:
         self.args = args
         self.feature_extractor = None
         self.classifier = None
+        self.old_classifier = None
         self.feature_extractors = []
         self.numclass = args.init_nc
         self.task_size = task_size
@@ -192,12 +193,12 @@ class selfEVL:
                 optimizer.zero_grad()
                 inputs = self._get_features(images)
 
-                outputs = model(inputs)
-                loss = self._loss(outputs, targets)
+                loss = self._loss(inputs, targets)
                 loss.mean().backward()
                 optimizer.step()
 
                 with torch.no_grad():
+                    outputs = model(inputs)
                     correct = torch.argmax(outputs.data, 1) == targets
                     log(model, loss.cpu(), correct.cpu(), scheduler.lr())
                     if epoch > 0:
@@ -220,28 +221,57 @@ class selfEVL:
     def _save_classifier(self):#TODO
         
         #TODO save classifier
+        self.old_classifier = toplayer(self.numclass,self.numclass)
+        self.old_classifier.load_state_dict(self.classifier.state_dict())
+        
         #TODO save prototype
         pass  
 
-    def _loss(self, outputs, targets,smoothing=0.1):#TODO
-
+    def _loss(self, inputs, targets,smoothing=0.1):#TODO
+        
+        outputs = self.classifier(inputs)
+        # get one-hot targets with smoothing
         n_class = outputs.size(1)
         one_hot = torch.full_like(outputs,fill_value=smoothing / (n_class - 1))
         one_hot.scatter_(dim=1, index=targets.unsqueeze(1).long(), value=1.0 - smoothing)
         targets_smooth = one_hot
-        # targets_smooth=targets
+        
+        # cross entropy loss
         loss_cls = F.kl_div(F.log_softmax(outputs, dim=1), targets_smooth, reduction='none').sum(-1)
-
+        loss = loss_cls
         if self._is_first_task():
-            return loss_cls
+            return loss
+        
+        # kd loss
+        old_class = self.numclass-self.task_size
+        old_output = self.old_classifier(inputs)
+        new_output = outputs[:,:old_class]
+        loss_kd = F.kl_div(F.log_softmax(new_output, dim=1), F.softmax(old_output, dim=1), reduction='none').sum(-1)
+        loss+=loss_kd
+        
+        # prototype loss
+        
+        # proto_aug = []
+        # proto_aug_label = []
+        # index = list(range(old_class))
+        # for _ in range(self.args.batch_size):
+        #     np.random.shuffle(index)
+        #     temp = self.prototype[index[0]] + np.random.normal(0, 1, 512) * self.radius
+        #     proto_aug.append(temp)
+        #     proto_aug_label.append(4*self.class_label[index[0]])
+        # proto_aug = torch.from_numpy(np.float32(np.asarray(proto_aug))).float().to(self.device)
+        # proto_aug_label = torch.from_numpy(np.asarray(proto_aug_label)).to(self.device)
+        # soft_feat_aug = self.model.fc(proto_aug)
+        # loss_protoAug = nn.CrossEntropyLoss()(soft_feat_aug/self.args.temp, proto_aug_label)
+          
+        
 
-        return loss_cls
+        return loss
 
     def train(self):
         if not self._get_feature_net():
             self._train_feature()
             self._save_feature_extractor()
-            
         self.feature_extractors.append(self.feature_extractor.state_dict())
         
         print('train classifier')
@@ -251,9 +281,8 @@ class selfEVL:
         self.numclass+=self.task_size
         
         
-    def _get_features(self, inputs):#TODO
+    def _get_features(self, inputs):# load feature extractor from state_dict
         output_list=[]
-        print(len(self.feature_extractors))
         for index,feature in enumerate(self.feature_extractors):
             model=network(resnet18_cbam(),self.args.init_nc+index*self.task_size)
             model.load_state_dict(feature)
@@ -268,13 +297,12 @@ class selfEVL:
             else:
                 output=output[:,self.args.init_nc+(index-1)*self.task_size:self.args.init_nc+index*self.task_size]
                 temp=torch.cat((temp,output),dim=1)
-        print(temp.shape)
         return temp
     
     def _is_first_task(self):
         return self.numclass==self.args.init_nc
     
-    def _get_feature_net(self):
+    def _get_feature_net(self):# load feature extractor from file
         path = self.args.save_path + self.file_name + '/'
         if not os.path.isdir(path):
             os.makedirs(path)

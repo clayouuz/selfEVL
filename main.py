@@ -7,7 +7,7 @@ import time
 parser = argparse.ArgumentParser(description='self EValuation Learning')
 
 # model
-parser.add_argument('--batch_size', type=int, default=128, help='input batch size for training (default: 64)')
+parser.add_argument('--batch_size', type=int, default=64, help='input batch size for training (default: 64)')
 parser.add_argument('--epochs', type=int, default=1, help='number of epochs to train (default: 100)')
 parser.add_argument('--lr', type=float, default=0.01, help='learning rate (default: 0.001)') 
 parser.add_argument('--total_nc', default=100, type=int, help='class number for the dataset')
