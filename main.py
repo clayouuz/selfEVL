@@ -8,7 +8,9 @@ parser = argparse.ArgumentParser(description='self EValuation Learning')
 
 # model
 parser.add_argument('--batch_size', type=int, default=64, help='input batch size for training (default: 64)')
-parser.add_argument('--epochs', type=int, default=1, help='number of epochs to train (default: 100)')
+parser.add_argument('--f_epochs', type=int, default=1, help='number of epochs to train feature net(default: 100)')
+parser.add_argument('--c_epochs', type=int, default=1, help='number of epochs to train classifier(default: 5)')
+parser.add_argument('--log_flash', type=bool, default=False, help='log flash(default: False)')
 parser.add_argument('--lr', type=float, default=0.01, help='learning rate (default: 0.001)') 
 parser.add_argument('--total_nc', default=100, type=int, help='class number for the dataset')
 parser.add_argument('--init_nc', default=10, type=int, help='the number of classes in first task')
@@ -16,6 +18,8 @@ parser.add_argument('--task_num', default=9, type=int, help='the number of incre
 parser.add_argument('--gpu', default='0', type=str, help='GPU id to use')
 parser.add_argument('--data_name', default='CIFAR100', type=str, help='the name of dataset')
 parser.add_argument('--save_path', default='model_saved_check/', type=str, help='save files directory')
+parser.add_argument('--protoAug_weight', default=10.0, type=float, help='protoAug loss weight')
+parser.add_argument('--kd_weight', default=10.0, type=float, help='knowledge distillation loss weight')
 
 # sam
 parser.add_argument("--depth", default=16, type=int, help="Number of layers.")

@@ -2,12 +2,13 @@ from utils.loading_bar import LoadingBar
 import time
 
 class Log:
-    def __init__(self, log_each: int, initial_epoch=-1, batch_size=64):
+    def __init__(self, log_each: int, initial_epoch=-1, batch_size=64, flash=True):
         self.loading_bar = LoadingBar(length=27)
         self.best_accuracy = 0.0
         self.log_each = log_each
         self.epoch = initial_epoch
         self.batch_size = batch_size
+        self.flash = flash
 
     def train(self, len_dataset: int) -> None:
         self.epoch += 1
@@ -69,12 +70,12 @@ class Log:
 
             self.last_steps_state = {"loss": 0.0, "accuracy": 0.0, "steps": 0}
             progress = self.step / self.len_dataset
-
-            print(
-                f"\r┃{self.epoch:12d}  ┃{loss:12.4f}  │{100*accuracy:10.2f} %  ┃{learning_rate:12.3e}  │{self._time():>12}  {self.loading_bar(progress)}",
-                end="",
-                flush=True,
-            )
+            if self.flash:
+                print(
+                    f"\r┃{self.epoch:12d}  ┃{loss:12.4f}  │{100*accuracy:10.2f} %  ┃{learning_rate:12.3e}  │{self._time():>12}  {self.loading_bar(progress)}",
+                    end="",
+                    flush=True,
+                )
 
     def _eval_step(self, loss, accuracy) -> None:
         self.epoch_state["loss"] += loss.sum().item()
