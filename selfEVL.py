@@ -92,7 +92,7 @@ class selfEVL:
                                  shuffle=True,
                                  batch_size=self.args.batch_size)
         return test_loader
-
+    
     def beforeTrain(self, current_task):
         if current_task == 0:
             classes = [0, self.numclass]
@@ -200,6 +200,8 @@ class selfEVL:
                     log(model, loss.cpu(), correct.cpu(), scheduler.lr())
                     if epoch > 0:
                         scheduler(epoch)
+                if args.testmode:
+                    break
 
             model.eval()
             log.eval(len_dataset=len(test_up2now))
@@ -212,13 +214,15 @@ class selfEVL:
                     loss = smooth_crossentropy(predictions, targets)
                     correct = torch.argmax(predictions, 1) == targets
                     log(model, loss.cpu(), correct.cpu())
+            if args.testmode:
+                break
         log.flush()
         log.next_round()                
     def _save_classifier(self):
         self.old_classifier = toplayer(self.numclass,self.numclass)
         self.old_classifier.load_state_dict(self.classifier.state_dict())
         self.old_classifier.to(self.device)
-        self.protoSave(self.classifier, self.train_loader)
+
 
     def _loss(self, inputs, targets,smoothing=0.1):
         outputs = self.classifier(inputs)
@@ -237,7 +241,7 @@ class selfEVL:
         
         # kd loss
         old_class = self.numclass-self.task_size
-        old_output = self.old_classifier(inputs)
+        old_output = self.old_classifier(inputs[:,:old_class])
         new_output = outputs[:,:old_class]
         loss_kd = F.kl_div(F.log_softmax(new_output, dim=1), F.softmax(old_output, dim=1), reduction='none').sum(-1)
         
@@ -247,15 +251,24 @@ class selfEVL:
         proto_aug = []
         proto_aug_label = []
         index = list(range(old_class))
+        print(self.prototype[index[0]].shape)
         for _ in range(self.args.batch_size):
             np.random.shuffle(index)
-            temp = self.prototype[index[0]] + np.random.normal(0, 1, 512) * self.radius
+            temp = self.prototype[index[0]] + np.random.normal(0, 1, self.numclass) * self.radius
             proto_aug.append(temp)
-            proto_aug_label.append(4*self.class_label[index[0]])
+            one_hot = torch.zeros(self.numclass)
+            one_hot.fill_(self.args.label_smoothing / (n_class - 1))
+            one_hot[self.class_label[index[0]]]=1.0 - self.args.label_smoothing
+            proto_aug_label.append(one_hot)
+
         proto_aug = torch.from_numpy(np.float32(np.asarray(proto_aug))).float().to(self.device)
         proto_aug_label = torch.from_numpy(np.asarray(proto_aug_label)).to(self.device)
-        soft_feat_aug = self.model.fc(proto_aug)
-        loss_protoAug = nn.CrossEntropyLoss()(soft_feat_aug/self.args.temp, proto_aug_label)
+        soft_feat_aug = self.classifier(proto_aug)
+        print("Input shape:", soft_feat_aug.shape)
+        print("Target shape:", proto_aug_label.shape)
+        print('target:',proto_aug_label)
+        print('input:',soft_feat_aug)
+        loss_protoAug = nn.CrossEntropyLoss()(soft_feat_aug, proto_aug_label)
         
         loss+=loss_protoAug*self.args.protoAug_weight
         
@@ -295,13 +308,14 @@ class selfEVL:
             print('train feature extractor')
         return os.path.exists(path)
     
-    def protoSave(self, model, loader):
+    def _protoSave(self, model, loader):
         features = []
         labels = []
         model.eval()
         with torch.no_grad():
             for i, (indexs, images, target) in enumerate(loader):
-                feature = model.feature(images.to(self.device))
+                feature = self._get_features(images.to(self.device))
+                # feature = self.classifier(feature)
                 if feature.shape[0] == self.args.batch_size:
                     labels.append(target.numpy())
                     features.append(feature.cpu().numpy())
@@ -330,14 +344,24 @@ class selfEVL:
             self.class_label = class_label
             print(self.radius)
         else:
+            # print(self.prototype[0].shape)
+            # print(self.prototype)
+            # print(prototype)
+            # input()
+            for i in range(self.numclass-self.task_size):
+                self.prototype[i] = np.concatenate((self.prototype[i], np.zeros(self.task_size)))
+            
+            # print(self.prototype[0].shape)
             self.prototype = np.concatenate((prototype, self.prototype), axis=0)
             self.class_label = np.concatenate((class_label, self.class_label), axis=0)
-            
+        print('saved prototype:',self.class_label)    
     def train(self):
         if not self._get_feature_net():
             self._train_feature()
             self._save_feature_extractor()
+            
         self.feature_extractors.append(self.feature_extractor.state_dict())
+        self._protoSave(self.classifier, self.train_loader)
         
         print('train classifier')
         self._train_classifier()
